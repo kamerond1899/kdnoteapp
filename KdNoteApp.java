@@ -65,6 +65,8 @@ import javax.swing.table.TableCellEditor;
 import javax.swing.text.SimpleAttributeSet;
 import java.util.prefs.Preferences;
 import javax.swing.event.CellEditorListener;
+import javax.swing.event.TableColumnModelEvent;
+import javax.swing.event.TableColumnModelListener;
 import javax.swing.filechooser.FileFilter;
 import org.apache.commons.compress.archivers.dump.InvalidFormatException;
 
@@ -370,24 +372,38 @@ singleClickEditor.setClickCountToStart(1);
 for (int i = 0; i < table.getColumnCount(); i++) {
     table.setDefaultEditor(table.getColumnClass(i), singleClickEditor);
 }
+table.getTableHeader().setReorderingAllowed(false); // Disallow column reordering
+table.getTableHeader().setResizingAllowed(true);    // Allow column resizing
+table.addMouseListener(new MouseAdapter() {
+    private int resizingColumn = -1;
+    private int initialX;
 
+    @Override
+    public void mousePressed(MouseEvent e) {
+        int col = table.columnAtPoint(e.getPoint());
+        Rectangle rect = table.getCellRect(0, col, true);
+        if (e.getX() > rect.x + rect.width - 5 && e.getX() < rect.x + rect.width + 5) {
+            resizingColumn = col;
+            initialX = e.getX();
+        }
+    }
 
+    @Override
+    public void mouseDragged(MouseEvent e) {
+        if (resizingColumn != -1) {
+            int change = e.getX() - initialX;
+            TableColumn column = table.getColumnModel().getColumn(resizingColumn);
+            column.setPreferredWidth(column.getWidth() + change);
+            initialX = e.getX();
+        }
+    }
 
-             table.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                if (e.isAltDown() && e.getKeyCode() == KeyEvent.VK_ENTER) {
-                    // Handle Alt+Enter for line break
-                    int row = table.getSelectedRow();
-                    int col = table.getSelectedColumn();
-                    if (row != -1 && col != -1) {
-                        String currentValue = (String) table.getValueAt(row, col);
-                        table.setValueAt(currentValue + "\n", row, col);
-                        table.setRowHeight(row, table.getRowHeight(row) + 16); // Adjust the row height
-                    }
-                }
-            }
-        });
+    @Override
+    public void mouseReleased(MouseEvent e) {
+        resizingColumn = -1;
+    }
+});
+
 table.addMouseMotionListener(new MouseAdapter() {
     private int resizingColumn = -1;
     private int initialX;
@@ -427,50 +443,30 @@ table.addMouseMotionListener(new MouseAdapter() {
         resizingColumn = -1;
     }
 });
+// Hide the table header visually but keep its functionality
+table.getTableHeader().setPreferredSize(new Dimension(0, 0));
+table.setTableHeader(table.getTableHeader());
 
-table.addMouseListener(new MouseAdapter() {
-    @Override
-    public void mousePressed(MouseEvent e) {
-        int col = table.columnAtPoint(e.getPoint());
-        Rectangle r = table.getCellRect(0, col, true);
-        if (col >= 0 && e.getX() > r.x + r.width - 5 && e.getX() < r.x + r.width + 5) {
-            resizingColumnIndex = col;
-            initialMouseX = e.getX();
-        }
-    }
 
-    @Override
-    public void mouseReleased(MouseEvent e) {
-        resizingColumnIndex = -1;
-        initialMouseX = -1;
-    }
-});
+             table.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.isAltDown() && e.getKeyCode() == KeyEvent.VK_ENTER) {
+                    // Handle Alt+Enter for line break
+                    int row = table.getSelectedRow();
+                    int col = table.getSelectedColumn();
+                    if (row != -1 && col != -1) {
+                        String currentValue = (String) table.getValueAt(row, col);
+                        table.setValueAt(currentValue + "\n", row, col);
+                        table.setRowHeight(row, table.getRowHeight(row) + 16); // Adjust the row height
+                    }
+                }
+            }
+        });
              
 table.getTableHeader().setReorderingAllowed(false); // Disallow column reordering
 table.getTableHeader().setResizingAllowed(true);    // Allow column resizing
 
-
-table.addMouseListener(new MouseAdapter() {
-    private int resizingColumn = -1;
-    private int startX;
-
-    @Override
-    public void mousePressed(MouseEvent e) {
-        int col = table.columnAtPoint(e.getPoint());
-        Rectangle rect = table.getCellRect(0, col, true);
-        if (e.getX() > rect.x + rect.width - 5 && e.getX() < rect.x + rect.width + 5) {
-            resizingColumn = col;
-            startX = e.getX();
-        }
-    }
-
-    @Override
-    public void mouseReleased(MouseEvent e) {
-        resizingColumn = -1;
-    }
-});
-
-             
 
                                 JPopupMenu colorMenu = new JPopupMenu();
                JMenuItem colorItem = new JMenuItem("Set Cell Color");
@@ -495,15 +491,35 @@ table.addMouseListener(new MouseAdapter() {
             }
         });
                
-  addRowItem.addActionListener(e2 -> {
+          addRowItem.addActionListener(e2 -> {
     DefaultTableModel model = (DefaultTableModel) table.getModel();
     StyledCell[] newRow = new StyledCell[table.getColumnCount()];
     for (int i = 0; i < newRow.length; i++) {
         newRow[i] = new StyledCell("", new Font("Arial", Font.PLAIN, 12), Color.WHITE);
     }
     model.addRow(newRow);
+    
+    // Adjust the preferred size of the table's viewport
+    int tableHeight = 0;
+    for (int i = 0; i < table.getRowCount(); i++) {
+        tableHeight += table.getRowHeight(i);
+    }
+    table.setPreferredScrollableViewportSize(new Dimension(table.getPreferredScrollableViewportSize().width, tableHeight));
+
+
+
+
+    // Force the JScrollPane to recompute its layout
+    JScrollPane sP = (JScrollPane) SwingUtilities.getAncestorOfClass(JScrollPane.class, table);
+    if (sP != null) {
+        sP.revalidate();
+        sP.repaint();
+    }
+
+    
+    
 });
-colorMenu.add(addRowItem);
+
 
 
 table.addMouseListener(new MouseAdapter() {

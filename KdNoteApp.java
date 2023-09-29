@@ -68,7 +68,9 @@ import javax.swing.event.CellEditorListener;
 import javax.swing.event.TableColumnModelEvent;
 import javax.swing.event.TableColumnModelListener;
 import javax.swing.filechooser.FileFilter;
+import javax.swing.table.AbstractTableModel;
 import org.apache.commons.compress.archivers.dump.InvalidFormatException;
+import org.jdesktop.swingx.JXTable;
 
 
 
@@ -366,15 +368,18 @@ try {
             int rows = Integer.parseInt(JOptionPane.showInputDialog("Enter number of rows:"));
             int columns = Integer.parseInt(JOptionPane.showInputDialog("Enter number of columns:"));
 
-           EmbeddedTable table = new EmbeddedTable(rows, columns);
+           JXTable table = new JXTable(rows, columns);
+           table.setSortable(false);
+
            DefaultCellEditor singleClickEditor = new DefaultCellEditor(new JTextField());
-singleClickEditor.setClickCountToStart(1);
-for (int i = 0; i < table.getColumnCount(); i++) {
-    table.setDefaultEditor(table.getColumnClass(i), singleClickEditor);
-}
-table.getTableHeader().setReorderingAllowed(false); // Disallow column reordering
-table.getTableHeader().setResizingAllowed(true);    // Allow column resizing
-table.addMouseListener(new MouseAdapter() {
+            singleClickEditor.setClickCountToStart(1);
+            for (int i = 0; i < table.getColumnCount(); i++) {
+
+                table.setDefaultEditor(table.getColumnClass(i), singleClickEditor);
+            }
+            table.getTableHeader().setReorderingAllowed(false); // Disallow column reordering
+            table.getTableHeader().setResizingAllowed(true);    // Allow column resizing
+            table.addMouseListener(new MouseAdapter() {
     private int resizingColumn = -1;
     private int initialX;
 
@@ -446,7 +451,27 @@ table.addMouseMotionListener(new MouseAdapter() {
 // Hide the table header visually but keep its functionality
 table.getTableHeader().setPreferredSize(new Dimension(0, 0));
 table.setTableHeader(table.getTableHeader());
+table.getColumnModel().addColumnModelListener(new TableColumnModelListener() {
+    @Override
+    public void columnMarginChanged(ChangeEvent e) {
+        TableColumn resizingColumn = table.getTableHeader().getResizingColumn();
+        if (resizingColumn != null) {
+            resizingColumn.setPreferredWidth(resizingColumn.getWidth());
+        }
+    }
+    
+    @Override
+    public void columnAdded(TableColumnModelEvent e) {}
 
+    @Override
+    public void columnRemoved(TableColumnModelEvent e) {}
+
+    @Override
+    public void columnMoved(TableColumnModelEvent e) {}
+
+    @Override
+    public void columnSelectionChanged(ListSelectionEvent e) {}
+});
 
              table.addKeyListener(new KeyAdapter() {
             @Override
@@ -463,7 +488,8 @@ table.setTableHeader(table.getTableHeader());
                 }
             }
         });
-             
+             //table.setHighlighters(); // Ensure no highlighters are set
+
 table.getTableHeader().setReorderingAllowed(false); // Disallow column reordering
 table.getTableHeader().setResizingAllowed(true);    // Allow column resizing
 
@@ -471,25 +497,22 @@ table.getTableHeader().setResizingAllowed(true);    // Allow column resizing
                                 JPopupMenu colorMenu = new JPopupMenu();
                JMenuItem colorItem = new JMenuItem("Set Cell Color");
                JMenuItem addRowItem = new JMenuItem("Add Row");
+               
+             colorItem.addActionListener(e2 -> {
+    Color newColor = JColorChooser.showDialog(table, "Choose Cell Color", Color.WHITE);
+    if (newColor != null) {
+        int row = table.getSelectedRow();
+        int col = table.getSelectedColumn();
+        if (row != -1 && col != -1) {
+            StyledCell cell = (StyledCell) table.getValueAt(row, col);
+            cell.setBackgroundColor(newColor);
+            table.updateUI();  // Force the table to update its appearance
+        }
+    }
+});
 
-               colorItem.addActionListener(e2 -> {
-            Color newColor = JColorChooser.showDialog(table, "Choose Cell Color", Color.WHITE);
-            if (newColor != null) {
-                int row = table.getSelectedRow();
-                int col = table.getSelectedColumn();
-                if (row != -1 && col != -1) {
-                    StyledCell cell = (StyledCell) table.getValueAt(row, col);
-                    cell.setBackgroundColor(newColor);
-                    table.repaint();  // Repaint the table to reflect the color change
-
-                    // Update the editor's background color
-                    if (table.isEditing() && table.getEditingRow() == row && table.getEditingColumn() == col) {
-                        JTextArea editor = ((EmbeddedTableStyledCellEditor) table.getCellEditor()).getEditorComponent();
-                        editor.setBackground(newColor);
-                    }
-                }
-            }
-        });
+               
+               
                
           addRowItem.addActionListener(e2 -> {
     DefaultTableModel model = (DefaultTableModel) table.getModel();
@@ -505,7 +528,7 @@ table.getTableHeader().setResizingAllowed(true);    // Allow column resizing
         tableHeight += table.getRowHeight(i);
     }
     table.setPreferredScrollableViewportSize(new Dimension(table.getPreferredScrollableViewportSize().width, tableHeight));
-
+    
 
 
 
@@ -561,7 +584,7 @@ table.addMouseListener(new MouseAdapter() {
                table.setDefaultRenderer(Object.class, new StyledCellRenderer());
                 table.setDefaultEditor(Object.class, new EmbeddedTableStyledCellEditor(table)); // Assuming you don't need the localRowHeader for this table
                 EmbeddedTableStyledCellEditor cellEditor = new EmbeddedTableStyledCellEditor(table);
-        table.setDefaultEditor(Object.class, cellEditor);
+        //table.setDefaultEditor(Object.class, cellEditor);
 
         JTextArea editorComponent = cellEditor.getEditorComponent();
         editorComponent.addFocusListener(new FocusAdapter() {
@@ -592,20 +615,39 @@ table.addMouseListener(new MouseAdapter() {
                String[] columnHeaders = new String[columns];
                 Arrays.fill(columnHeaders, "");  // Fill the array with empty strings
                 table.setModel(new DefaultTableModel(data, columnHeaders));
+                
+                table.setDefaultRenderer(StyledCell.class, new StyledCellRenderer());
+                                // Replace default columns with ResizableTableColumn
+                for (int i = 0; i < table.getColumnCount(); i++) {
+                     table.getColumnModel().getColumn(i).setCellRenderer(new StyledCellRenderer());
+                    TableColumn column = table.getColumnModel().getColumn(i);
+                    int columnIndex = column.getModelIndex();
+                    ResizableTableColumn resizableColumn = new ResizableTableColumn();
+                    resizableColumn.setModelIndex(columnIndex);
+                    table.getColumnModel().removeColumn(column);
+                    table.getColumnModel().addColumn(resizableColumn);
+                }
 
-                DefaultTableModel model = new DefaultTableModel(data, columnHeaders) {
-                    @Override
-                    public boolean isCellEditable(int row, int column) {
-                        return true;
-                    }
-                };
+                StyledTableModel model = new StyledTableModel(data, columnHeaders);
+table.setModel(model);
                 table.setModel(model);
+
+                table.setModel(model);
+
+                model.fireTableDataChanged();
                 table.setSurrendersFocusOnKeystroke(true);
 
 
                 JScrollPane sP = new JScrollPane(table);
                 sP.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
                 sP.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+                // Adjust the preferred size of the table's viewport
+                int tableHeight = 0;
+                for (int i = 0; i < table.getRowCount(); i++) {
+                    tableHeight += table.getRowHeight(i);
+                }
+                table.setPreferredScrollableViewportSize(new Dimension(table.getPreferredScrollableViewportSize().width, tableHeight));
+
 
                 StyledDocument doc = textPane.getStyledDocument();
                 Style style = doc.addStyle("tableStyle", null);
@@ -1589,6 +1631,8 @@ newRowHeader.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
     @Override
     public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
         super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+        System.out.println("Renderer called for row " + row + ", column " + column); // Debug print
+    
         setBorder(BorderFactory.createMatteBorder(1, 0, 0, 1, Color.LIGHT_GRAY));
         return this;
     }
@@ -3001,6 +3045,7 @@ private void applySpreadsheetBackgroundColor(Color color) {
                             StyledCell styledCell = (StyledCell) value;
                             styledCell.setBackgroundColor(color); // Set the background color
                             currentTable.setValueAt(styledCell, row, col);
+                            
                         }
                     }
                 }
@@ -3094,13 +3139,12 @@ public class StyledCellRenderer extends DefaultTableCellRenderer {
             String text = styledCell.getValue().replace("\n", "<br>");
             setText("<html>" + text + "</html>");
             setFont(styledCell.getFont());
-            if (isSelected) {
-                c.setBackground(table.getSelectionBackground());
-            } else {
-                c.setBackground(styledCell.getBackgroundColor());
-            }
             
-             // Add this part to set the foreground color
+            // Set the background color directly from the StyledCell
+            c.setBackground(styledCell.getBackgroundColor());
+       
+            c.repaint();
+            // Add this part to set the foreground color
             if (styledCell.getForegroundColor() != null) {
                 setForeground(styledCell.getForegroundColor());
             } else {
@@ -3109,6 +3153,9 @@ public class StyledCellRenderer extends DefaultTableCellRenderer {
             
             setHorizontalAlignment(styledCell.getHorizontalAlignment());
             setVerticalAlignment(styledCell.getVerticalAlignment());
+        } else {
+            setBackground(table.getBackground());
+            setForeground(table.getForeground());
         }
         
         // Set the border here
@@ -3185,6 +3232,7 @@ public class StyledCellEditor extends DefaultCellEditor {
         JScrollPane scrollPane = new JScrollPane(editor);
         scrollPane.setBorder(null);
         editorComponent = scrollPane;
+        
 
         // Add a key listener to handle "Alt+Enter" for line breaks
         editor.addKeyListener(new KeyAdapter() {
@@ -3337,6 +3385,9 @@ public class EmbeddedTableStyledCellEditor extends StyledCellEditor {
         for (PropertyChangeListener listener : editor.getPropertyChangeListeners("font")) {
             editor.removePropertyChangeListener("font", listener);
         }
+                editor.setLineWrap(true);
+        editor.setWrapStyleWord(true);
+
 
         // Add a cell editor listener to handle resizing after editing
         addCellEditorListener(new CellEditorListener() {
@@ -3396,6 +3447,54 @@ private void resizeEmbeddedTable(int row, int column) {
     }
 }
 
+}
+
+public class StyledTableModel extends AbstractTableModel {
+    private StyledCell[][] data;
+    private String[] columnNames;
+
+    public StyledTableModel(StyledCell[][] data, String[] columnNames) {
+        this.data = data;
+        this.columnNames = columnNames;
+    }
+
+    @Override
+    public int getRowCount() {
+        return data.length;
+    }
+
+    @Override
+    public int getColumnCount() {
+        return columnNames.length;
+    }
+
+    @Override
+    public Object getValueAt(int rowIndex, int columnIndex) {
+        return data[rowIndex][columnIndex];
+    }
+
+    @Override
+    public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
+        if (aValue instanceof StyledCell) {
+            data[rowIndex][columnIndex] = (StyledCell) aValue;
+            fireTableCellUpdated(rowIndex, columnIndex);
+        }
+    }
+
+    @Override
+    public Class<?> getColumnClass(int columnIndex) {
+        return StyledCell.class;
+    }
+
+    @Override
+    public boolean isCellEditable(int rowIndex, int columnIndex) {
+        return true;
+    }
+
+    @Override
+    public String getColumnName(int column) {
+        return columnNames[column];
+    }
 }
 
 
@@ -3463,6 +3562,14 @@ public void changeSelection(int rowIndex, int columnIndex, boolean toggle, boole
 }
 
     
+}
+
+class ResizableTableColumn extends TableColumn {
+    @Override
+    public void setWidth(int width) {
+        super.setWidth(width);
+        setPreferredWidth(getWidth());
+    }
 }
 
 
